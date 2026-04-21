@@ -1,0 +1,5 @@
+{
+  "/api/session/route": "app/api/session/route.js",
+  "/play/page": "app/play/page.js",
+  "/host/page": "app/host/page.js"
+}

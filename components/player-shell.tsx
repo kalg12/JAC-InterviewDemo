@@ -28,12 +28,14 @@ function getStoredParticipant(): Participant | null {
 export function PlayerShell() {
   const [payload, setPayload] = useState<SessionPayload | null>(null);
   const [participant, setParticipant] = useState<Participant | null>(null);
+  const [endedPayload, setEndedPayload] = useState<SessionPayload | null>(null);
   const [name, setName] = useState("");
   const [selectedOption, setSelectedOption] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const [resultSummary, setResultSummary] = useState<ParticipantResultSummary | null>(null);
+  const [loadingResultSummary, setLoadingResultSummary] = useState(false);
 
   const currentQuestion = useMemo(() => {
     if (!payload) {
@@ -76,7 +78,18 @@ export function PlayerShell() {
   useEffect(() => {
     setSelectedOption("");
     setShowConfetti(false);
+    if (payload?.session.phase !== "ended") {
+      setResultSummary(null);
+      setLoadingResultSummary(false);
+      setEndedPayload(null);
+    }
   }, [payload?.session.currentQuestion, payload?.session.phase]);
+
+  useEffect(() => {
+    if (payload?.session.phase === "ended") {
+      setEndedPayload(payload);
+    }
+  }, [payload]);
 
   useEffect(() => {
     if (!participant || !payload) {
@@ -110,6 +123,7 @@ export function PlayerShell() {
     }
 
     let active = true;
+    setLoadingResultSummary(true);
 
     const loadResult = async () => {
       try {
@@ -128,6 +142,10 @@ export function PlayerShell() {
       } catch (resultError) {
         if (active && resultError instanceof Error) {
           setError(resultError.message);
+        }
+      } finally {
+        if (active) {
+          setLoadingResultSummary(false);
         }
       }
     };
@@ -216,56 +234,61 @@ export function PlayerShell() {
     );
   }
 
-  if (payload?.session.phase === "ended") {
+  if (!payload) {
+    return (
+      <div className="question-card">
+        <span className="eyebrow">Sincronizando</span>
+        <h1 className="question-title">Estamos preparando tu experiencia</h1>
+        <p className="muted">
+          Conectando tu pantalla con el pulso en vivo para mostrarte la pregunta correcta.
+        </p>
+      </div>
+    );
+  }
+
+  if (payload.session.phase === "ended" || endedPayload) {
     return (
       <div className="question-card">
         <span className="eyebrow">Cierre de actividad</span>
         <h1 className="question-title">Gracias por participar, {participant.name}</h1>
         <p className="muted">
-          El presentador ya cerró la dinámica. Aquí tienes tu resultado personal y el repaso de tus respuestas.
+          La dinámica ya terminó y esta vista final quedará fija en tu pantalla para que puedas ver tu cierre sin que se reinicie la actividad.
         </p>
 
         <div className="metrics-grid" style={{ marginTop: 18 }}>
           <article className="metric">
-            <strong>{resultSummary?.correctAnswers ?? 0}</strong>
+            <strong>{loadingResultSummary ? "..." : resultSummary?.correctAnswers ?? 0}</strong>
             <span>respuestas correctas</span>
           </article>
           <article className="metric">
-            <strong>{resultSummary?.answeredQuestions ?? 0}</strong>
+            <strong>{loadingResultSummary ? "..." : resultSummary?.answeredQuestions ?? 0}</strong>
             <span>preguntas respondidas</span>
           </article>
           <article className="metric">
-            <strong>{resultSummary?.totalQuestions ?? questions.length}</strong>
+            <strong>{loadingResultSummary ? "..." : resultSummary?.totalQuestions ?? questions.length}</strong>
             <span>preguntas totales</span>
           </article>
         </div>
 
-        <div className="final-chart" style={{ marginTop: 24 }}>
-          {resultSummary?.items.map((item, index) => (
-            <div className="participant-result-card" key={item.questionId}>
-              <div className="final-chart-label">
-                <span className="final-chart-index">0{index + 1}</span>
-                <div>
-                  <strong>{item.prompt}</strong>
-                  <p className="muted small">
-                    Tu respuesta:{" "}
-                    {item.selectedOptionLabel
-                      ? `${item.selectedOptionEmoji ?? ""} ${item.selectedOptionLabel}`
-                      : "Sin respuesta"}
-                  </p>
-                  <p className="muted small">
-                    Respuesta correcta: {item.correctOptionEmoji} {item.correctOptionLabel}
-                  </p>
-                </div>
-              </div>
-              <div style={{ marginTop: 12 }}>
-                <span className={`tag ${item.isCorrect ? "" : "danger"}`}>
-                  {item.isCorrect ? "Correcta" : "Por reforzar"}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
+        {loadingResultSummary ? (
+          <div className="participant-summary-state">
+            <span className="tag">Cerrando actividad</span>
+            <p className="muted">
+              Estamos dejando fija tu pantalla final para que veas tu resultado sin regresar a la pregunta inicial.
+            </p>
+          </div>
+        ) : (
+          <div className="participant-summary-state">
+            <span className={`tag ${(resultSummary?.correctAnswers ?? 0) === (resultSummary?.totalQuestions ?? 0) ? "" : "danger"}`}>
+              {(resultSummary?.correctAnswers ?? 0) === (resultSummary?.totalQuestions ?? 0)
+                ? "Excelente cierre"
+                : "Resultado registrado"}
+            </span>
+            <p className="muted">
+              Tu participación ya quedó guardada. Puedes dejar esta pantalla abierta; permanecerá en tu resultado final hasta que el presentador reinicie una nueva dinámica.
+            </p>
+          </div>
+        )}
 
         {error ? <p className="footer-note">{error}</p> : null}
       </div>
@@ -309,11 +332,23 @@ export function PlayerShell() {
         {currentQuestion.options.map((option) => {
           const isActive = selectedOption === option.id;
           const isStar =
-            payload?.session.phase === "reveal" && option.id === currentQuestion.correctOptionId;
+            payload.session.phase === "reveal" && option.id === currentQuestion.correctOptionId;
+          const isRevealPhase = payload.session.phase === "reveal";
+          const isIncorrectSelection =
+            isRevealPhase && isActive && option.id !== currentQuestion.correctOptionId;
+          const optionClasses = [
+            "option-card",
+            isActive ? "active" : "",
+            isStar ? "correct-answer" : "",
+            isIncorrectSelection ? "incorrect-answer" : "",
+            isRevealPhase && !isStar && !isIncorrectSelection ? "reveal-muted" : ""
+          ]
+            .filter(Boolean)
+            .join(" ");
 
           return (
             <button
-              className={`option-card ${isActive ? "active" : ""}`}
+              className={optionClasses}
               key={option.id}
               onClick={() => sendAnswer(option.id)}
             >

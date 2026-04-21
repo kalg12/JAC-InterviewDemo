@@ -15,6 +15,12 @@ type AnswerRow = {
   option_id: string;
 };
 
+type MemoryState = {
+  session: SessionState;
+  participants: Participant[];
+  answers: AnswerRow[];
+};
+
 const defaultSession: SessionState = {
   code: joinCode,
   title: sessionTitle,
@@ -22,11 +28,19 @@ const defaultSession: SessionState = {
   phase: "lobby"
 };
 
-const memoryState = {
-  session: { ...defaultSession },
-  participants: [] as Participant[],
-  answers: [] as AnswerRow[]
-};
+declare global {
+  var __quizJacMemoryState__: MemoryState | undefined;
+}
+
+const memoryState: MemoryState =
+  globalThis.__quizJacMemoryState__ ??
+  {
+    session: { ...defaultSession },
+    participants: [] as Participant[],
+    answers: [] as AnswerRow[]
+  };
+
+globalThis.__quizJacMemoryState__ = memoryState;
 
 function getSupabaseAdmin(): SupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

@@ -1,0 +1,5 @@
+{
+  "/api/session/route": "/api/session",
+  "/play/page": "/play",
+  "/host/page": "/host"
+}

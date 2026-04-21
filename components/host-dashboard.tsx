@@ -17,15 +17,21 @@ async function fetchSession(): Promise<SessionPayload> {
 
 export function HostDashboard() {
   const [payload, setPayload] = useState<SessionPayload | null>(null);
+  const [endedPayload, setEndedPayload] = useState<SessionPayload | null>(null);
   const [qrSrc, setQrSrc] = useState("");
   const [error, setError] = useState("");
   const [joinUrl, setJoinUrl] = useState("");
+  const endLocked = endedPayload !== null;
 
   useEffect(() => {
     setJoinUrl(`${window.location.origin}/play?code=${joinCode}`);
   }, []);
 
   useEffect(() => {
+    if (endLocked) {
+      return;
+    }
+
     let active = true;
 
     const load = async () => {
@@ -48,7 +54,7 @@ export function HostDashboard() {
       active = false;
       window.clearInterval(interval);
     };
-  }, []);
+  }, [endLocked]);
 
   useEffect(() => {
     if (!joinUrl) {
@@ -78,6 +84,13 @@ export function HostDashboard() {
   const showFinalBoard =
     isFinalQuestion && (payload?.session.phase === "reveal" || payload?.session.phase === "ended");
   const sessionEnded = payload?.session.phase === "ended";
+  const sessionPhase = payload?.session.phase ?? "lobby";
+
+  useEffect(() => {
+    if (payload?.session.phase === "ended") {
+      setEndedPayload(payload);
+    }
+  }, [payload]);
 
   async function sendAction(action: "next" | "reveal" | "reset" | "end") {
     const response = await fetch("/api/session/control", {
@@ -95,8 +108,94 @@ export function HostDashboard() {
     }
 
     setError("");
+    if (action === "reset") {
+      setEndedPayload(null);
+    }
     const data = await fetchSession();
     setPayload(data);
+  }
+
+  async function advanceHostFlow() {
+    if (!payload || sessionEnded) {
+      return;
+    }
+
+    if (isFinalQuestion && sessionPhase === "reveal") {
+      await sendAction("end");
+      return;
+    }
+
+    if (sessionPhase === "question") {
+      await sendAction("reveal");
+      return;
+    }
+
+    if (!isFinalQuestion) {
+      await sendAction("next");
+    }
+  }
+
+  const primaryActionLabel = isFinalQuestion
+    ? sessionPhase === "reveal"
+      ? "Terminar actividad"
+      : "Revelar respuesta final"
+    : sessionPhase === "reveal"
+      ? "Siguiente pregunta"
+      : "Revelar respuesta";
+
+  if (sessionEnded || endedPayload) {
+    return (
+      <div className="host-grid">
+        <section className="panel">
+          <span className="eyebrow">Actividad cerrada</span>
+          <h2>{payload?.session.title ?? endedPayload?.session.title ?? "JAC Live Pulse"}</h2>
+          <p className="muted">
+            La dinámica ya terminó y esta vista final queda fija para el presentador. Los participantes ya se quedaron en su pantalla de resultado final.
+          </p>
+
+          <div className="metrics-grid" style={{ marginTop: 18 }}>
+            <article className="metric">
+              <strong>{payload?.participants.length ?? endedPayload?.participants.length ?? 0}</strong>
+              <span>participantes registrados</span>
+            </article>
+            <article className="metric">
+              <strong>{questions.length}</strong>
+              <span>preguntas completadas</span>
+            </article>
+            <article className="metric">
+              <strong>Finalizada</strong>
+              <span>sesión congelada en cierre</span>
+            </article>
+          </div>
+
+          <div className="participant-summary-state" style={{ marginTop: 24 }}>
+            <span className="tag">Cierre estable</span>
+            <p className="muted">
+              Esta pantalla no mostrará gráficas finales ni regresará a la pregunta 1. Se mantendrá en este cierre hasta que decidas reiniciar la demo.
+            </p>
+          </div>
+
+          <div style={{ marginTop: 18, display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <button className="ghost-button" onClick={() => sendAction("reset")}>
+              Reiniciar demo
+            </button>
+          </div>
+
+          {error ? (
+            <p className="footer-note">
+              <span className="tag danger">Atencion</span> {error}
+            </p>
+          ) : null}
+        </section>
+
+        <aside className="panel">
+          <h3>Cierre de presentación</h3>
+          <p className="muted small">
+            El escenario ya quedó congelado en la pantalla final. Si vas a iniciar otra dinámica, usa el botón de reinicio cuando estés listo.
+          </p>
+        </aside>
+      </div>
+    );
   }
 
   return (
@@ -126,18 +225,8 @@ export function HostDashboard() {
 
         <div style={{ marginTop: 18, display: "flex", gap: 12, flexWrap: "wrap" }}>
           {!sessionEnded ? (
-            <button className="button" onClick={() => sendAction("next")}>
-              Siguiente pregunta
-            </button>
-          ) : null}
-          {!sessionEnded ? (
-            <button className="ghost-button" onClick={() => sendAction("reveal")}>
-              Revelar respuesta
-            </button>
-          ) : null}
-          {showFinalBoard && !sessionEnded ? (
-            <button className="button" onClick={() => sendAction("end")}>
-              Terminar actividad
+            <button className="button" onClick={advanceHostFlow}>
+              {primaryActionLabel}
             </button>
           ) : null}
           <button className="ghost-button" onClick={() => sendAction("reset")}>
@@ -177,42 +266,11 @@ export function HostDashboard() {
 
         {showFinalBoard ? (
           <div className="question-card finale-card" style={{ marginTop: 20 }}>
-            <span className="question-pill">Cierre de la experiencia</span>
-            <h2 className="question-title">Resumen final del pulso JAC</h2>
+            <span className="question-pill">Listo para cerrar</span>
+            <h2 className="question-title">Última pregunta completada</h2>
             <p className="muted">
-              Al cerrar la ultima pregunta, esta grafica muestra cuantas respuestas cayeron en la
-              opcion esperada en cada bloque del recorrido.
+              Si todo está listo, usa <strong>Terminar actividad</strong> para congelar la pantalla final del presentador y dejar a cada participante en su cierre definitivo.
             </p>
-            {payload?.session.phase === "ended" ? (
-              <p className="footer-note">
-                La actividad quedó cerrada. Cada participante ya puede ver su resultado personal en su propio dispositivo.
-              </p>
-            ) : null}
-
-            <div className="final-chart">
-              {payload?.finalSummary.map((item, index) => {
-                const width =
-                  item.totalResponses === 0 ? 0 : (item.correctResponses / item.totalResponses) * 100;
-
-                return (
-                  <div className="final-chart-row" key={item.questionId}>
-                    <div className="final-chart-label">
-                      <span className="final-chart-index">0{index + 1}</span>
-                      <div>
-                        <strong>{item.prompt}</strong>
-                        <p className="muted small">
-                          {item.correctResponses} de {item.totalResponses || 0} eligieron la opcion esperada
-                        </p>
-                      </div>
-                    </div>
-                    <div className="final-chart-bar">
-                      <div className="final-chart-fill" style={{ width: `${width}%` }} />
-                      <span className="final-chart-value">{Math.round(width)}%</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
           </div>
         ) : null}
 
