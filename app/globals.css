@@ -29,6 +29,7 @@ body {
   position: relative;
   margin: 0;
   min-height: 100vh;
+  padding-bottom: 92px;
   color: var(--text);
   background:
     linear-gradient(180deg, rgba(3, 10, 22, 0.48), rgba(4, 14, 30, 0.62)),
@@ -747,6 +748,89 @@ input {
   font-weight: 800;
 }
 
+.audio-dock {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 30;
+  width: min(720px, calc(100vw - 28px));
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(8, 24, 42, 0.94), rgba(10, 30, 49, 0.9)),
+    rgba(12, 28, 49, 0.85);
+  backdrop-filter: blur(18px);
+  box-shadow: var(--shadow);
+}
+
+.audio-dock-main {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.audio-dock-status {
+  min-width: 124px;
+}
+
+.audio-dock-label {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--teal);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.audio-dock-title {
+  color: var(--text-strong);
+  font-size: 0.96rem;
+}
+
+.audio-dock-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.audio-level-tag {
+  white-space: nowrap;
+}
+
+.audio-pill {
+  min-height: 40px;
+  padding: 0 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.audio-slider-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 180px;
+}
+
+.audio-slider-label {
+  white-space: nowrap;
+}
+
+.audio-slider {
+  width: 100%;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.audio-dock-note {
+  margin: 8px 4px 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
 @keyframes confetti-fall {
   0% {
     opacity: 0;
@@ -791,5 +875,41 @@ input {
   .progress-banner {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .audio-dock {
+    right: 12px;
+    bottom: 12px;
+    width: calc(100vw - 24px);
+    border-radius: 28px;
+  }
+
+  .audio-dock-main {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 640px) {
+  body {
+    padding-bottom: 150px;
+  }
+
+  .audio-dock {
+    border-radius: 24px;
+  }
+
+  .audio-dock-main {
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .audio-dock-status,
+  .audio-slider-group {
+    min-width: 100%;
+  }
+
+  .audio-dock-controls {
+    justify-content: space-between;
+    width: 100%;
   }
 }

@@ -1,3 +1,4 @@
+import { BackgroundAudio } from "@/components/background-audio";
 import { HostDashboard } from "@/components/host-dashboard";
 
 export default function HostPage() {
@@ -6,6 +7,7 @@ export default function HostPage() {
       <div className="content">
         <HostDashboard />
       </div>
+      <BackgroundAudio />
     </main>
   );
 }
