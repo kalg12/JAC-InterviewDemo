@@ -35,6 +35,50 @@ function formatDuration(milliseconds: number | null | undefined) {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
+function getOptimisticPayload(
+  payload: SessionPayload,
+  action: "next" | "reveal" | "reset" | "end"
+): SessionPayload {
+  if (action === "reset") {
+    return payload;
+  }
+
+  if (action === "reveal") {
+    return {
+      ...payload,
+      session: {
+        ...payload.session,
+        phase: "reveal"
+      }
+    };
+  }
+
+  if (action === "end") {
+    return {
+      ...payload,
+      session: {
+        ...payload.session,
+        phase: "ended"
+      }
+    };
+  }
+
+  const nextQuestionIndex =
+    payload.session.phase === "lobby"
+      ? 0
+      : Math.min(payload.session.currentQuestion + 1, questions.length - 1);
+
+  return {
+    ...payload,
+    session: {
+      ...payload.session,
+      currentQuestion: nextQuestionIndex,
+      phase: "question"
+    },
+    stats: []
+  };
+}
+
 export function HostDashboard() {
   const [payload, setPayload] = useState<SessionPayload | null>(null);
   const [endedPayload, setEndedPayload] = useState<SessionPayload | null>(null);
@@ -100,7 +144,11 @@ export function HostDashboard() {
       return;
     }
 
+    const previousPayload = payload;
     setPendingAction(action);
+    if (payload) {
+      setPayload(getOptimisticPayload(payload, action));
+    }
 
     try {
       const data = await sendSessionAction(action);
@@ -110,6 +158,9 @@ export function HostDashboard() {
       }
       setPayload(data.payload);
     } catch (sessionError) {
+      if (previousPayload) {
+        setPayload(previousPayload);
+      }
       if (sessionError instanceof Error) {
         setError(sessionError.message);
       }
