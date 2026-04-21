@@ -1,9 +1,10 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getShuffledOptions, questions } from "@/lib/questions";
 import type { Participant, ParticipantResultSummary, SessionPayload } from "@/lib/types";
+import { useSessionSync } from "@/lib/use-session-sync";
 
 const participantStorageKey = "jac-live-pulse-participant";
 
@@ -48,7 +49,6 @@ export function PlayerShell() {
   const [showConfetti, setShowConfetti] = useState(false);
   const [resultSummary, setResultSummary] = useState<ParticipantResultSummary | null>(null);
   const [loadingResultSummary, setLoadingResultSummary] = useState(false);
-  const isPollingRef = useRef(false);
 
   const currentQuestion = useMemo(() => {
     if (!payload) {
@@ -63,42 +63,18 @@ export function PlayerShell() {
     setParticipant(getStoredParticipant());
   }, []);
 
-  useEffect(() => {
-    let active = true;
+  const participantQuery = participant?.id ? `?participantId=${encodeURIComponent(participant.id)}` : "";
 
-    const load = async () => {
-      if (isPollingRef.current) {
-        return;
-      }
-
-      isPollingRef.current = true;
-
-      try {
-        const participantId = getStoredParticipant()?.id;
-        const query = participantId ? `?participantId=${encodeURIComponent(participantId)}` : "";
-        const response = await fetch(`/api/session${query}`, { cache: "no-store" });
-        const data = await response.json();
-        if (active) {
-          setPayload(data);
-          setError("");
-        }
-      } catch {
-        if (active) {
-          setError("No pudimos sincronizar la sesion.");
-        }
-      } finally {
-        isPollingRef.current = false;
-      }
-    };
-
-    load();
-    const interval = window.setInterval(load, 700);
-
-    return () => {
-      active = false;
-      window.clearInterval(interval);
-    };
-  }, []);
+  useSessionSync({
+    fetchPath: `/api/session${participantQuery}`,
+    onData: (data) => {
+      setPayload(data);
+      setError("");
+    },
+    onError: () => {
+      setError("No pudimos sincronizar la sesion.");
+    }
+  });
 
   useEffect(() => {
     setSelectedOption((currentSelected) => {
@@ -124,20 +100,6 @@ export function PlayerShell() {
       setEndedPayload(payload);
     }
   }, [payload]);
-
-  useEffect(() => {
-    if (!participant || !payload) {
-      return;
-    }
-
-    const exists = payload.participants.some((item) => item.id === participant.id);
-
-    if (!exists && payload.participants.length > 0) {
-      window.localStorage.removeItem(participantStorageKey);
-      setParticipant(null);
-      setSelectedOption("");
-    }
-  }, [participant, payload]);
 
   useEffect(() => {
     if (!payload || payload.session.phase !== "reveal" || !selectedOption) {
@@ -193,6 +155,10 @@ export function PlayerShell() {
   }, [participant, payload?.session.phase]);
 
   async function joinRoom() {
+    await registerParticipant(name);
+  }
+
+  async function registerParticipant(participantName: string) {
     setSaving(true);
     setError("");
 
@@ -202,21 +168,35 @@ export function PlayerShell() {
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ name })
+        body: JSON.stringify({ name: participantName })
       });
       const data = await response.json();
 
       if (!response.ok) {
         setError(data.error ?? "No se pudo registrar tu nombre.");
-        return;
+        return null;
       }
 
       window.localStorage.setItem(participantStorageKey, JSON.stringify(data.participant));
       setParticipant(data.participant);
       setSelectedOption("");
+      return data.participant as Participant;
     } finally {
       setSaving(false);
     }
+  }
+
+  async function submitAnswerRequest(participantId: string, optionId: string) {
+    return fetch("/api/session/answer", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        participantId,
+        optionId
+      })
+    });
   }
 
   async function sendAnswer(optionId: string) {
@@ -227,20 +207,30 @@ export function PlayerShell() {
     setSelectedOption(optionId);
     setError("");
 
-    const response = await fetch("/api/session/answer", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        participantId: participant.id,
-        optionId
-      })
-    });
+    let response = await submitAnswerRequest(participant.id, optionId);
 
     if (!response.ok) {
       const data = await response.json().catch(() => ({ error: "No se pudo enviar tu respuesta." }));
-      setError(data.error ?? "No se pudo enviar tu respuesta.");
+      const errorMessage = data.error ?? "No se pudo enviar tu respuesta.";
+
+      if (errorMessage === "Participante no registrado en la sesion.") {
+        const refreshedParticipant = await registerParticipant(participant.name);
+
+        if (refreshedParticipant) {
+          response = await submitAnswerRequest(refreshedParticipant.id, optionId);
+
+          if (response.ok) {
+            setError("");
+            return;
+          }
+
+          const retryData = await response.json().catch(() => ({ error: "No se pudo enviar tu respuesta." }));
+          setError(retryData.error ?? "No se pudo enviar tu respuesta.");
+          return;
+        }
+      }
+
+      setError(errorMessage);
     }
   }
 

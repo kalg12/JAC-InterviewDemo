@@ -185,6 +185,12 @@ export async function submitAnswer(participantId: string, optionId: string) {
       throw new Error("La pregunta ya fue cerrada.");
     }
 
+    const participantExists = memoryState.participants.some((participant) => participant.id === participantId);
+
+    if (!participantExists) {
+      throw new Error("Participante no registrado en la sesion.");
+    }
+
     const currentQuestion = questions[memoryState.session.currentQuestion];
     const questionId = currentQuestion.id;
     const optionExists = currentQuestion.options.some((option) => option.id === optionId);
@@ -209,8 +215,19 @@ export async function submitAnswer(participantId: string, optionId: string) {
   const liveQuestionId = questions[session.current_question]?.id ?? questions[0].id;
   const liveQuestion = questions[session.current_question] ?? questions[0];
 
+  const { data: participant } = await client
+    .from("quiz_participants")
+    .select("id")
+    .eq("session_code", joinCode)
+    .eq("id", participantId)
+    .maybeSingle();
+
   if (session.phase === "reveal" || session.phase === "ended") {
     throw new Error("La pregunta ya fue cerrada.");
+  }
+
+  if (!participant) {
+    throw new Error("Participante no registrado en la sesion.");
   }
 
   if (!liveQuestion.options.some((option) => option.id === optionId)) {

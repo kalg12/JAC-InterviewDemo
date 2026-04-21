@@ -1,19 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import QRCode from "qrcode";
 import { getShuffledOptions, joinCode, questions } from "@/lib/questions";
 import type { SessionControlPayload, SessionPayload } from "@/lib/types";
-
-async function fetchSession(): Promise<SessionPayload> {
-  const response = await fetch("/api/session", { cache: "no-store" });
-
-  if (!response.ok) {
-    throw new Error("No se pudo leer la sesion.");
-  }
-
-  return response.json();
-}
+import { useSessionSync } from "@/lib/use-session-sync";
 
 async function sendSessionAction(action: "next" | "reveal" | "reset" | "end") {
   const response = await fetch("/api/session/control", {
@@ -51,50 +42,21 @@ export function HostDashboard() {
   const [error, setError] = useState("");
   const [joinUrl, setJoinUrl] = useState("");
   const [pendingAction, setPendingAction] = useState<"next" | "reveal" | "reset" | "end" | null>(null);
-  const isPollingRef = useRef(false);
   const endLocked = endedPayload !== null;
 
   useEffect(() => {
     setJoinUrl(`${window.location.origin}/play?code=${joinCode}`);
   }, []);
 
-  useEffect(() => {
-    if (endLocked) {
-      return;
-    }
-
-    let active = true;
-
-    const load = async () => {
-      if (isPollingRef.current) {
-        return;
-      }
-
-      isPollingRef.current = true;
-
-      try {
-        const data = await fetchSession();
-        if (active) {
-          setPayload(data);
-          setError("");
-        }
-      } catch (sessionError) {
-        if (active && sessionError instanceof Error) {
-          setError(sessionError.message);
-        }
-      } finally {
-        isPollingRef.current = false;
-      }
-    };
-
-    load();
-    const interval = window.setInterval(load, 700);
-
-    return () => {
-      active = false;
-      window.clearInterval(interval);
-    };
-  }, [endLocked]);
+  useSessionSync({
+    enabled: !endLocked,
+    fetchPath: "/api/session",
+    onData: (data) => {
+      setPayload(data);
+      setError("");
+    },
+    onError: setError
+  });
 
   useEffect(() => {
     if (!joinUrl) {
