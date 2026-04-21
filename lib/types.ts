@@ -45,7 +45,22 @@ export type ParticipantResultSummary = {
   correctAnswers: number;
   incorrectAnswers: number;
   unansweredQuestions: number;
+  rank: number | null;
+  totalResponseMs: number | null;
+  averageResponseMs: number | null;
   items: ParticipantQuestionResult[];
+};
+
+export type LeaderboardEntry = {
+  participantId: string;
+  participantName: string;
+  correctAnswers: number;
+  answeredQuestions: number;
+  incorrectAnswers: number;
+  unansweredQuestions: number;
+  totalResponseMs: number | null;
+  averageResponseMs: number | null;
+  rank: number;
 };
 
 export type SessionPayload = {
@@ -53,6 +68,7 @@ export type SessionPayload = {
   participants: Participant[];
   stats: ResponseStat[];
   finalSummary: FinalQuestionSummary[];
+  leaderboard: LeaderboardEntry[];
   currentParticipantAnswerOptionId?: string | null;
 };
 

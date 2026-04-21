@@ -1,6 +1,7 @@
 import { joinCode, questions, sessionTitle } from "@/lib/questions";
 import type {
   FinalQuestionSummary,
+  LeaderboardEntry,
   Participant,
   ParticipantResultSummary,
   ResponseStat,
@@ -13,10 +14,12 @@ type AnswerRow = {
   participant_id: string;
   question_id: string;
   option_id: string;
+  created_at?: string;
 };
 
 type MemoryState = {
   session: SessionState;
+  sessionCreatedAt: string;
   participants: Participant[];
   answers: AnswerRow[];
 };
@@ -36,6 +39,7 @@ const memoryState: MemoryState =
   globalThis.__quizJacMemoryState__ ??
   {
     session: { ...defaultSession },
+    sessionCreatedAt: new Date().toISOString(),
     participants: [] as Participant[],
     answers: [] as AnswerRow[]
   };
@@ -95,6 +99,7 @@ export async function getSessionPayload(participantId?: string): Promise<Session
       participants: memoryState.participants,
       stats: getStatsForCurrentQuestion(memoryState.answers, memoryState.session.currentQuestion),
       finalSummary: getFinalSummary(memoryState.answers),
+      leaderboard: getLeaderboard(memoryState.participants, memoryState.answers, memoryState.sessionCreatedAt),
       currentParticipantAnswerOptionId: getCurrentParticipantAnswerOptionId(
         memoryState.answers,
         memoryState.session.currentQuestion,
@@ -107,7 +112,10 @@ export async function getSessionPayload(participantId?: string): Promise<Session
 
   const [{ data: participants }, { data: responses }] = await Promise.all([
     client.from("quiz_participants").select("id, name").eq("session_code", joinCode).order("created_at"),
-    client.from("quiz_responses").select("participant_id, question_id, option_id").eq("session_code", joinCode)
+    client
+      .from("quiz_responses")
+      .select("participant_id, question_id, option_id, created_at")
+      .eq("session_code", joinCode)
   ]);
 
   return {
@@ -120,6 +128,7 @@ export async function getSessionPayload(participantId?: string): Promise<Session
     participants: participants ?? [],
     stats: getStatsForCurrentQuestion(responses ?? [], session.current_question),
     finalSummary: getFinalSummary(responses ?? []),
+    leaderboard: getLeaderboard(participants ?? [], responses ?? [], session.created_at),
     currentParticipantAnswerOptionId: getCurrentParticipantAnswerOptionId(
       responses ?? [],
       session.current_question,
@@ -190,7 +199,8 @@ export async function submitAnswer(participantId: string, optionId: string) {
     memoryState.answers.push({
       participant_id: participantId,
       question_id: questionId,
-      option_id: optionId
+      option_id: optionId,
+      created_at: new Date().toISOString()
     });
     return;
   }
@@ -242,6 +252,7 @@ export async function controlSession(action: "next" | "reveal" | "reset" | "end"
 
     if (action === "reset") {
       memoryState.session = { ...defaultSession };
+      memoryState.sessionCreatedAt = new Date().toISOString();
       memoryState.participants = [];
       memoryState.answers = [];
     }
@@ -314,7 +325,11 @@ export async function getParticipantResultSummary(
       throw new Error("No encontramos ese participante.");
     }
 
-    return buildParticipantResultSummary(participant, memoryState.answers);
+    return buildParticipantResultSummary(
+      participant,
+      memoryState.answers,
+      getLeaderboard(memoryState.participants, memoryState.answers, memoryState.sessionCreatedAt)
+    );
   }
 
   await ensureSupabaseSession(client);
@@ -329,7 +344,7 @@ export async function getParticipantResultSummary(
         .maybeSingle(),
       client
         .from("quiz_responses")
-        .select("participant_id, question_id, option_id")
+        .select("participant_id, question_id, option_id, created_at")
         .eq("session_code", joinCode)
         .eq("participant_id", participantId)
     ]);
@@ -344,11 +359,33 @@ export async function getParticipantResultSummary(
         id: participantId,
         name: "Participante"
       },
-      responses ?? []
+      responses ?? [],
+      getLeaderboard([], responses ?? [], new Date().toISOString())
     );
   }
 
-  return buildParticipantResultSummary(participant, responses ?? []);
+  const { data: leaderboardParticipants = [] } = await client
+    .from("quiz_participants")
+    .select("id, name")
+    .eq("session_code", joinCode)
+    .order("created_at");
+
+  const { data: allResponses = [] } = await client
+    .from("quiz_responses")
+    .select("participant_id, question_id, option_id, created_at")
+    .eq("session_code", joinCode);
+
+  const { data: liveSession } = await client
+    .from("quiz_sessions")
+    .select("created_at")
+    .eq("code", joinCode)
+    .maybeSingle();
+
+  return buildParticipantResultSummary(
+    participant,
+    responses ?? [],
+    getLeaderboard(leaderboardParticipants ?? [], allResponses ?? [], liveSession?.created_at ?? new Date().toISOString())
+  );
 }
 
 function getStatsForCurrentQuestion(
@@ -434,9 +471,131 @@ function getCurrentParticipantAnswerOptionId(
   return answer?.option_id ?? null;
 }
 
+function getLeaderboard(
+  participants: Participant[],
+  answers: AnswerRow[],
+  sessionCreatedAt: string
+): LeaderboardEntry[] {
+  const byParticipant = new Map<
+    string,
+    {
+      participant: Participant;
+      correctAnswers: number;
+      answeredQuestions: number;
+      incorrectAnswers: number;
+      unansweredQuestions: number;
+      totalResponseMs: number | null;
+      averageResponseMs: number | null;
+    }
+  >();
+  const sessionStartMs = Date.parse(sessionCreatedAt);
+
+  for (const participant of participants) {
+    byParticipant.set(participant.id, {
+      participant,
+      correctAnswers: 0,
+      answeredQuestions: 0,
+      incorrectAnswers: 0,
+      unansweredQuestions: questions.length,
+      totalResponseMs: null,
+      averageResponseMs: null
+    });
+  }
+
+  const answersByParticipant = new Map<string, AnswerRow[]>();
+
+  for (const answer of answers) {
+    const bucket = answersByParticipant.get(answer.participant_id) ?? [];
+    bucket.push(answer);
+    answersByParticipant.set(answer.participant_id, bucket);
+  }
+
+  for (const [participantId, participantAnswers] of answersByParticipant.entries()) {
+    const participant =
+      byParticipant.get(participantId)?.participant ?? {
+        id: participantId,
+        name: "Participante"
+      };
+    const distinctAnswers = participantAnswers.filter(
+      (answer, index, list) =>
+        index === list.findIndex((item) => item.question_id === answer.question_id)
+    );
+    let correctAnswers = 0;
+    let totalResponseMs = 0;
+    let timedAnswers = 0;
+
+    for (const answer of distinctAnswers) {
+      const question = questions.find((item) => item.id === answer.question_id);
+
+      if (!question) {
+        continue;
+      }
+
+      if (answer.option_id === question.correctOptionId) {
+        correctAnswers += 1;
+      }
+
+      if (answer.created_at) {
+        const answerMs = Date.parse(answer.created_at);
+
+        if (Number.isFinite(answerMs) && Number.isFinite(sessionStartMs)) {
+          totalResponseMs += Math.max(answerMs - sessionStartMs, 0);
+          timedAnswers += 1;
+        }
+      }
+    }
+
+    const answeredQuestions = distinctAnswers.length;
+    const incorrectAnswers = answeredQuestions - correctAnswers;
+    const unansweredQuestions = Math.max(questions.length - answeredQuestions, 0);
+
+    byParticipant.set(participantId, {
+      participant,
+      correctAnswers,
+      answeredQuestions,
+      incorrectAnswers,
+      unansweredQuestions,
+      totalResponseMs: timedAnswers > 0 ? totalResponseMs : null,
+      averageResponseMs: timedAnswers > 0 ? totalResponseMs / timedAnswers : null
+    });
+  }
+
+  return Array.from(byParticipant.values())
+    .sort((left, right) => {
+      if (right.correctAnswers !== left.correctAnswers) {
+        return right.correctAnswers - left.correctAnswers;
+      }
+
+      const leftTime = left.totalResponseMs ?? Number.POSITIVE_INFINITY;
+      const rightTime = right.totalResponseMs ?? Number.POSITIVE_INFINITY;
+
+      if (leftTime !== rightTime) {
+        return leftTime - rightTime;
+      }
+
+      if (right.answeredQuestions !== left.answeredQuestions) {
+        return right.answeredQuestions - left.answeredQuestions;
+      }
+
+      return left.participant.name.localeCompare(right.participant.name, "es");
+    })
+    .map((item, index) => ({
+      participantId: item.participant.id,
+      participantName: item.participant.name,
+      correctAnswers: item.correctAnswers,
+      answeredQuestions: item.answeredQuestions,
+      incorrectAnswers: item.incorrectAnswers,
+      unansweredQuestions: item.unansweredQuestions,
+      totalResponseMs: item.totalResponseMs,
+      averageResponseMs: item.averageResponseMs,
+      rank: index + 1
+    }));
+}
+
 function buildParticipantResultSummary(
   participant: Participant,
-  answers: AnswerRow[]
+  answers: AnswerRow[],
+  leaderboard: LeaderboardEntry[] = []
 ): ParticipantResultSummary {
   const items = questions.map((question) => {
     const selected = answers.find((answer) => answer.question_id === question.id);
@@ -456,6 +615,7 @@ function buildParticipantResultSummary(
       isCorrect: selectedOption?.id === correctOption.id
     };
   });
+  const leaderboardEntry = leaderboard.find((item) => item.participantId === participant.id);
 
   return {
     participantId: participant.id,
@@ -465,6 +625,9 @@ function buildParticipantResultSummary(
     correctAnswers: items.filter((item) => item.isCorrect).length,
     incorrectAnswers: items.filter((item) => item.selectedOptionId && !item.isCorrect).length,
     unansweredQuestions: items.filter((item) => !item.selectedOptionId).length,
+    rank: leaderboardEntry?.rank ?? null,
+    totalResponseMs: leaderboardEntry?.totalResponseMs ?? null,
+    averageResponseMs: leaderboardEntry?.averageResponseMs ?? null,
     items
   };
 }

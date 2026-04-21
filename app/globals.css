@@ -552,6 +552,42 @@ input {
   box-shadow: var(--shadow);
 }
 
+.leaderboard-list {
+  display: grid;
+  gap: 14px;
+}
+
+.leaderboard-card {
+  padding: 16px;
+  border-radius: 22px;
+  border: 1px solid var(--line);
+  background: rgba(9, 24, 42, 0.62);
+  box-shadow: var(--shadow);
+}
+
+.leaderboard-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.leaderboard-name {
+  margin: 10px 0 8px;
+  color: var(--text-strong);
+  font-size: 1.02rem;
+}
+
+.leaderboard-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.leaderboard-meta + .leaderboard-meta {
+  margin-top: 6px;
+}
+
 .final-results-list {
   display: grid;
   gap: 16px;

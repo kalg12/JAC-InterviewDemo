@@ -25,6 +25,18 @@ function getStoredParticipant(): Participant | null {
   }
 }
 
+function formatDuration(milliseconds: number | null | undefined) {
+  if (milliseconds == null) {
+    return "Sin tiempo";
+  }
+
+  const totalSeconds = Math.max(Math.round(milliseconds / 1000), 0);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
 export function PlayerShell() {
   const [payload, setPayload] = useState<SessionPayload | null>(null);
   const [participant, setParticipant] = useState<Participant | null>(null);
@@ -298,6 +310,14 @@ export function PlayerShell() {
             <strong>{loadingResultSummary ? "..." : summary?.totalQuestions ?? questions.length}</strong>
             <span>preguntas totales</span>
           </article>
+          <article className="metric">
+            <strong>{loadingResultSummary ? "..." : summary?.rank ?? "-"}</strong>
+            <span>posición en ranking</span>
+          </article>
+          <article className="metric">
+            <strong>{loadingResultSummary ? "..." : formatDuration(summary?.totalResponseMs)}</strong>
+            <span>tiempo acumulado</span>
+          </article>
         </div>
 
         {loadingResultSummary ? (
@@ -321,6 +341,49 @@ export function PlayerShell() {
             </p>
           </div>
         )}
+
+        {!loadingResultSummary && summary ? (
+          <div className="participant-summary-state">
+            <span className="tag">Ranking final</span>
+            <p className="muted">
+              Terminaste en la posición <strong>#{summary.rank ?? "-"}</strong> con{" "}
+              <strong>{summary.correctAnswers}</strong> aciertos y un tiempo acumulado de{" "}
+              <strong>{formatDuration(summary.totalResponseMs)}</strong>.
+            </p>
+          </div>
+        ) : null}
+
+        {!loadingResultSummary && payload.leaderboard.length > 0 ? (
+          <div className="final-results-list">
+            <div className="participant-result-header">
+              <h3 className="participant-result-title" style={{ marginBottom: 0 }}>
+                Top participantes
+              </h3>
+            </div>
+            {payload.leaderboard.slice(0, 5).map((entry) => {
+              const isCurrentParticipant = entry.participantId === participant.id;
+
+              return (
+                <article
+                  className={`participant-result-card ${isCurrentParticipant ? "result-correct" : ""}`}
+                  key={entry.participantId}
+                >
+                  <div className="participant-result-header">
+                    <span className="question-pill">#{entry.rank}</span>
+                    {isCurrentParticipant ? <span className="tag">Tu lugar</span> : null}
+                  </div>
+                  <h3 className="participant-result-title">{entry.participantName}</h3>
+                  <p className="participant-result-line">
+                    <strong>Aciertos:</strong> {entry.correctAnswers} de {questions.length}
+                  </p>
+                  <p className="participant-result-line">
+                    <strong>Tiempo acumulado:</strong> {formatDuration(entry.totalResponseMs)}
+                  </p>
+                </article>
+              );
+            })}
+          </div>
+        ) : null}
 
         {!loadingResultSummary && summary ? (
           <div className="final-results-list">

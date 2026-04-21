@@ -32,6 +32,18 @@ async function sendSessionAction(action: "next" | "reveal" | "reset" | "end") {
   return (await response.json()) as SessionControlPayload;
 }
 
+function formatDuration(milliseconds: number | null | undefined) {
+  if (milliseconds == null) {
+    return "Sin tiempo";
+  }
+
+  const totalSeconds = Math.max(Math.round(milliseconds / 1000), 0);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
 export function HostDashboard() {
   const [payload, setPayload] = useState<SessionPayload | null>(null);
   const [endedPayload, setEndedPayload] = useState<SessionPayload | null>(null);
@@ -231,6 +243,24 @@ export function HostDashboard() {
           <p className="muted small">
             El escenario ya quedó congelado en la pantalla final. Si vas a iniciar otra dinámica, usa el botón de reinicio cuando estés listo.
           </p>
+
+          <div className="leaderboard-list" style={{ marginTop: 18 }}>
+            {(payload?.leaderboard ?? endedPayload?.leaderboard ?? []).slice(0, 5).map((entry) => (
+              <article className="leaderboard-card" key={entry.participantId}>
+                <div className="leaderboard-card-header">
+                  <strong>#{entry.rank}</strong>
+                  <span className="tag">{entry.correctAnswers} aciertos</span>
+                </div>
+                <h4 className="leaderboard-name">{entry.participantName}</h4>
+                <p className="leaderboard-meta">
+                  Respondidas: {entry.answeredQuestions} de {questions.length}
+                </p>
+                <p className="leaderboard-meta">
+                  Tiempo acumulado: {formatDuration(entry.totalResponseMs)}
+                </p>
+              </article>
+            ))}
+          </div>
         </aside>
       </div>
     );
@@ -339,6 +369,38 @@ export function HostDashboard() {
       </section>
 
       <aside className="panel">
+        <h3>Ranking en vivo</h3>
+        <p className="muted small">
+          Se ordena por más respuestas correctas y, en empate, por menor tiempo acumulado de respuesta.
+        </p>
+
+        <div className="leaderboard-list" style={{ marginTop: 16 }}>
+          {(payload?.leaderboard ?? []).length > 0 ? (
+            (payload?.leaderboard ?? []).slice(0, 5).map((entry) => (
+              <article className="leaderboard-card" key={entry.participantId}>
+                <div className="leaderboard-card-header">
+                  <strong>#{entry.rank}</strong>
+                  <span className="tag">{entry.correctAnswers} aciertos</span>
+                </div>
+                <h4 className="leaderboard-name">{entry.participantName}</h4>
+                <p className="leaderboard-meta">
+                  Respondidas: {entry.answeredQuestions} de {questions.length}
+                </p>
+                <p className="leaderboard-meta">
+                  Tiempo acumulado: {formatDuration(entry.totalResponseMs)}
+                </p>
+              </article>
+            ))
+          ) : (
+            <div className="participant-summary-state" style={{ marginTop: 8 }}>
+              <span className="tag">Sin datos aún</span>
+              <p className="muted">
+                El ranking aparecerá en cuanto entren participantes y comiencen a responder.
+              </p>
+            </div>
+          )}
+        </div>
+
         <h3>Ingreso con QR</h3>
         <div className="qr-frame">
           {qrSrc ? <img src={qrSrc} alt="QR para entrar al quiz" width={260} height={260} /> : "Generando QR..."}
