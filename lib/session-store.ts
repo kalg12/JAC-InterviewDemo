@@ -329,7 +329,13 @@ export async function getParticipantResultSummary(
   }
 
   if (!participant) {
-    throw new Error("No encontramos ese participante.");
+    return buildParticipantResultSummary(
+      {
+        id: participantId,
+        name: "Participante"
+      },
+      responses ?? []
+    );
   }
 
   return buildParticipantResultSummary(participant, responses ?? []);
@@ -430,6 +436,8 @@ function buildParticipantResultSummary(
     totalQuestions: questions.length,
     answeredQuestions: items.filter((item) => item.selectedOptionId).length,
     correctAnswers: items.filter((item) => item.isCorrect).length,
+    incorrectAnswers: items.filter((item) => item.selectedOptionId && !item.isCorrect).length,
+    unansweredQuestions: items.filter((item) => !item.selectedOptionId).length,
     items
   };
 }

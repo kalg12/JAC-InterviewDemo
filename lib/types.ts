@@ -43,6 +43,8 @@ export type ParticipantResultSummary = {
   totalQuestions: number;
   answeredQuestions: number;
   correctAnswers: number;
+  incorrectAnswers: number;
+  unansweredQuestions: number;
   items: ParticipantQuestionResult[];
 };
 

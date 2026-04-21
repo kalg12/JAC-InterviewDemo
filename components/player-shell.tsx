@@ -158,6 +158,7 @@ export function PlayerShell() {
 
         if (active) {
           setResultSummary(data.result);
+          setError("");
         }
       } catch (resultError) {
         if (active && resultError instanceof Error) {
@@ -267,6 +268,8 @@ export function PlayerShell() {
   }
 
   if (payload.session.phase === "ended" || endedPayload) {
+    const summary = resultSummary;
+
     return (
       <div className="question-card">
         <span className="eyebrow">Cierre de actividad</span>
@@ -277,15 +280,19 @@ export function PlayerShell() {
 
         <div className="metrics-grid" style={{ marginTop: 18 }}>
           <article className="metric">
-            <strong>{loadingResultSummary ? "..." : resultSummary?.correctAnswers ?? 0}</strong>
+            <strong>{loadingResultSummary ? "..." : summary?.correctAnswers ?? 0}</strong>
             <span>respuestas correctas</span>
           </article>
           <article className="metric">
-            <strong>{loadingResultSummary ? "..." : resultSummary?.answeredQuestions ?? 0}</strong>
-            <span>preguntas respondidas</span>
+            <strong>{loadingResultSummary ? "..." : summary?.incorrectAnswers ?? 0}</strong>
+            <span>respuestas incorrectas</span>
           </article>
           <article className="metric">
-            <strong>{loadingResultSummary ? "..." : resultSummary?.totalQuestions ?? questions.length}</strong>
+            <strong>{loadingResultSummary ? "..." : summary?.unansweredQuestions ?? questions.length}</strong>
+            <span>preguntas sin responder</span>
+          </article>
+          <article className="metric">
+            <strong>{loadingResultSummary ? "..." : summary?.totalQuestions ?? questions.length}</strong>
             <span>preguntas totales</span>
           </article>
         </div>
@@ -299,16 +306,56 @@ export function PlayerShell() {
           </div>
         ) : (
           <div className="participant-summary-state">
-            <span className={`tag ${(resultSummary?.correctAnswers ?? 0) === (resultSummary?.totalQuestions ?? 0) ? "" : "danger"}`}>
-              {(resultSummary?.correctAnswers ?? 0) === (resultSummary?.totalQuestions ?? 0)
+            <span className={`tag ${(summary?.correctAnswers ?? 0) === (summary?.totalQuestions ?? 0) ? "" : "danger"}`}>
+              {(summary?.correctAnswers ?? 0) === (summary?.totalQuestions ?? 0)
                 ? "Excelente cierre"
-                : "Resultado registrado"}
+                : (summary?.unansweredQuestions ?? 0) > 0
+                  ? "Te faltaron respuestas"
+                  : "Resultado registrado"}
             </span>
             <p className="muted">
               Tu participación ya quedó guardada. Puedes dejar esta pantalla abierta; permanecerá en tu resultado final hasta que el presentador reinicie una nueva dinámica.
             </p>
           </div>
         )}
+
+        {!loadingResultSummary && summary ? (
+          <div className="final-results-list">
+            {summary.items.map((item, index) => {
+              const statusClassName = item.selectedOptionId
+                ? item.isCorrect
+                  ? "result-correct"
+                  : "result-incorrect"
+                : "result-unanswered";
+              const statusLabel = item.selectedOptionId
+                ? item.isCorrect
+                  ? "Correcta"
+                  : "Incorrecta"
+                : "Sin responder";
+
+              return (
+                <article className={`participant-result-card ${statusClassName}`} key={item.questionId}>
+                  <div className="participant-result-header">
+                    <span className="question-pill">Pregunta {index + 1}</span>
+                    <span className={`tag ${item.selectedOptionId && !item.isCorrect ? "danger" : ""}`}>
+                      {statusLabel}
+                    </span>
+                  </div>
+                  <h3 className="participant-result-title">{item.prompt}</h3>
+                  <p className="participant-result-line">
+                    <strong>Tu respuesta:</strong>{" "}
+                    {item.selectedOptionLabel
+                      ? `${item.selectedOptionEmoji} ${item.selectedOptionLabel}`
+                      : "No respondiste esta pregunta"}
+                  </p>
+                  <p className="participant-result-line">
+                    <strong>Correcta:</strong> {item.correctOptionEmoji} {item.correctOptionLabel}
+                  </p>
+                </article>
+              );
+            })}
+          </div>
+        ) : null}
 
         {error ? <p className="footer-note">{error}</p> : null}
       </div>
@@ -342,9 +389,14 @@ export function PlayerShell() {
           Cuando alguien avance el pulso central, esta pantalla cambiará para toda la audiencia.
         </span>
       </div>
-      <span className="question-pill" style={{ marginTop: 18 }}>
-        Pregunta {(payload?.session.currentQuestion ?? 0) + 1} de {questions.length}
-      </span>
+      <div className="progress-banner">
+        <span className="question-pill">
+          Pregunta {(payload?.session.currentQuestion ?? 0) + 1} de {questions.length}
+        </span>
+        <span className="progress-caption">
+          {payload.session.phase === "reveal" ? "Respuesta revelada" : "Pregunta activa"}
+        </span>
+      </div>
       <h1 className="question-title">{currentQuestion.prompt}</h1>
       <p className="muted">
         Elige la opcion que mejor represente tu respuesta. Las tarjetas usan emociones y energia
@@ -379,7 +431,10 @@ export function PlayerShell() {
               <span className="emoji">{option.emoji}</span>
               <strong className="option-label">{option.label}</strong>
               <p className="muted small">{option.mood}</p>
-              {isStar ? <span className="tag">Respuesta estrella</span> : null}
+              <div className="option-tags">
+                {isActive ? <span className="tag neutral-tag">Tu seleccion</span> : null}
+                {isStar ? <span className="tag">Correcta</span> : null}
+              </div>
             </button>
           );
         })}
