@@ -33,6 +33,7 @@ export function PlayerShell() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [movingSession, setMovingSession] = useState(false);
 
   const currentQuestion = useMemo(() => {
     if (!payload) {
@@ -154,6 +155,39 @@ export function PlayerShell() {
     }
   }
 
+  async function advanceEveryone() {
+    setMovingSession(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/session/control", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ action: "next", source: "participant" })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error ?? "No se pudo mover la sesion.");
+        return;
+      }
+
+      setPayload((current) =>
+        current
+          ? {
+              ...current,
+              session: data.session
+            }
+          : current
+      );
+    } finally {
+      setMovingSession(false);
+    }
+  }
+
   if (!participant) {
     return (
       <div className="lobby-card">
@@ -201,6 +235,12 @@ export function PlayerShell() {
       ) : null}
 
       <span className="eyebrow">Hola, {participant.name}</span>
+      <div className="session-sync-banner">
+        <span className="tag">Sincronizado con el escenario</span>
+        <span className="muted small">
+          Cuando alguien avance el pulso central, esta pantalla cambiará para toda la audiencia.
+        </span>
+      </div>
       <h1 className="question-title">{currentQuestion.prompt}</h1>
       <p className="muted">
         Elige la opcion que mejor represente tu respuesta. Las tarjetas usan emociones y energia
@@ -229,11 +269,23 @@ export function PlayerShell() {
       </div>
 
       {payload?.session.phase === "reveal" ? (
-        <p className="footer-note">
-          {selectedOption === currentQuestion.correctOptionId
-            ? "Acertaste. Activa el momento wow con confeti y prepárate para el siguiente pulso."
-            : "La respuesta correcta ya fue revelada. Si quieres, puedes dejar esta pantalla abierta para seguir el siguiente pulso."}
-        </p>
+        <>
+          <p className="footer-note">
+            {selectedOption === currentQuestion.correctOptionId
+              ? "Acertaste. Activa el momento wow con confeti y prepárate para el siguiente pulso."
+              : "La respuesta correcta ya fue revelada. Si quieres, puedes dejar esta pantalla abierta para seguir el siguiente pulso."}
+          </p>
+          {payload.session.currentQuestion < questions.length - 1 ? (
+            <div className="session-actions">
+              <button className="ghost-button" disabled={movingSession} onClick={advanceEveryone}>
+                {movingSession ? "Moviendo a todos..." : "Avanzar a la siguiente pregunta para todos"}
+              </button>
+              <span className="muted small">
+                Este boton empuja el pulso global y alinea a todos con la siguiente pregunta.
+              </span>
+            </div>
+          ) : null}
+        </>
       ) : (
         <p className="footer-note">Tu seleccion se guarda y puede actualizarse hasta que reveles.</p>
       )}

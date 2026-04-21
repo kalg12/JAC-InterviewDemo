@@ -416,6 +416,22 @@ input {
   font-size: 0.92rem;
 }
 
+.session-sync-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0 8px;
+}
+
+.session-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-top: 16px;
+}
+
 .confetti-burst {
   position: absolute;
   inset: 0;
