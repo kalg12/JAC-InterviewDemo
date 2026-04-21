@@ -1,5 +1,11 @@
 import { joinCode, questions, sessionTitle } from "@/lib/questions";
-import type { Participant, ResponseStat, SessionPayload, SessionState } from "@/lib/types";
+import type {
+  FinalQuestionSummary,
+  Participant,
+  ResponseStat,
+  SessionPayload,
+  SessionState
+} from "@/lib/types";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 type AnswerRow = {
@@ -72,7 +78,8 @@ export async function getSessionPayload(): Promise<SessionPayload> {
     return {
       session: memoryState.session,
       participants: memoryState.participants,
-      stats: getStatsForCurrentQuestion(memoryState.answers, memoryState.session.currentQuestion)
+      stats: getStatsForCurrentQuestion(memoryState.answers, memoryState.session.currentQuestion),
+      finalSummary: getFinalSummary(memoryState.answers)
     };
   }
 
@@ -91,7 +98,8 @@ export async function getSessionPayload(): Promise<SessionPayload> {
       phase: session.phase
     },
     participants,
-    stats: getStatsForCurrentQuestion(responses, session.current_question)
+    stats: getStatsForCurrentQuestion(responses, session.current_question),
+    finalSummary: getFinalSummary(responses)
   };
 }
 
@@ -243,4 +251,21 @@ function getStatsForCurrentQuestion(
     optionId: option.id,
     count: filtered.filter((answer) => answer.option_id === option.id).length
   })) ?? [];
+}
+
+function getFinalSummary(answers: AnswerRow[]): FinalQuestionSummary[] {
+  return questions.map((question) => {
+    const responses = answers.filter((answer) => answer.question_id === question.id);
+    const correctResponses = responses.filter(
+      (answer) => answer.option_id === question.correctOptionId
+    ).length;
+
+    return {
+      questionId: question.id,
+      prompt: question.prompt,
+      correctOptionId: question.correctOptionId,
+      totalResponses: responses.length,
+      correctResponses
+    };
+  });
 }

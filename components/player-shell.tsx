@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { questions } from "@/lib/questions";
 import type { Participant, SessionPayload } from "@/lib/types";
@@ -31,6 +32,7 @@ export function PlayerShell() {
   const [selectedOption, setSelectedOption] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
 
   const currentQuestion = useMemo(() => {
     if (!payload) {
@@ -72,6 +74,7 @@ export function PlayerShell() {
 
   useEffect(() => {
     setSelectedOption("");
+    setShowConfetti(false);
   }, [payload?.session.currentQuestion, payload?.session.phase]);
 
   useEffect(() => {
@@ -87,6 +90,18 @@ export function PlayerShell() {
       setSelectedOption("");
     }
   }, [participant, payload]);
+
+  useEffect(() => {
+    if (!payload || payload.session.phase !== "reveal" || !selectedOption) {
+      return;
+    }
+
+    if (selectedOption === currentQuestion.correctOptionId) {
+      setShowConfetti(true);
+      const timeout = window.setTimeout(() => setShowConfetti(false), 3200);
+      return () => window.clearTimeout(timeout);
+    }
+  }, [currentQuestion.correctOptionId, payload, selectedOption]);
 
   async function joinRoom() {
     setSaving(true);
@@ -167,6 +182,24 @@ export function PlayerShell() {
 
   return (
     <div className="question-card">
+      {showConfetti ? (
+        <div className="confetti-burst" aria-hidden="true">
+          {Array.from({ length: 22 }).map((_, index) => (
+            <span
+              className="confetti-piece"
+              key={`confetti-${index}`}
+              style={
+                {
+                  ["--x" as string]: `${(index % 6) * 18 - 45}vw`,
+                  ["--delay" as string]: `${(index % 5) * 0.08}s`,
+                  ["--duration" as string]: `${2.6 + (index % 4) * 0.24}s`
+                } as CSSProperties
+              }
+            />
+          ))}
+        </div>
+      ) : null}
+
       <span className="eyebrow">Hola, {participant.name}</span>
       <h1 className="question-title">{currentQuestion.prompt}</h1>
       <p className="muted">
@@ -197,8 +230,9 @@ export function PlayerShell() {
 
       {payload?.session.phase === "reveal" ? (
         <p className="footer-note">
-          La respuesta correcta ya fue revelada. Si quieres, puedes dejar esta pantalla abierta para
-          seguir el siguiente pulso.
+          {selectedOption === currentQuestion.correctOptionId
+            ? "Acertaste. Activa el momento wow con confeti y prepárate para el siguiente pulso."
+            : "La respuesta correcta ya fue revelada. Si quieres, puedes dejar esta pantalla abierta para seguir el siguiente pulso."}
         </p>
       ) : (
         <p className="footer-note">Tu seleccion se guarda y puede actualizarse hasta que reveles.</p>

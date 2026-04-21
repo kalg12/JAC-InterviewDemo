@@ -72,6 +72,8 @@ export function HostDashboard() {
   }, [payload]);
 
   const totalResponses = payload?.stats.reduce((sum, item) => sum + item.count, 0) ?? 0;
+  const isFinalQuestion = (payload?.session.currentQuestion ?? 0) === questions.length - 1;
+  const showFinalBoard = isFinalQuestion && payload?.session.phase === "reveal";
 
   async function sendAction(action: "next" | "reveal" | "reset") {
     const response = await fetch("/api/session/control", {
@@ -159,6 +161,42 @@ export function HostDashboard() {
             })}
           </div>
         </div>
+
+        {showFinalBoard ? (
+          <div className="question-card finale-card" style={{ marginTop: 20 }}>
+            <span className="question-pill">Cierre de la experiencia</span>
+            <h2 className="question-title">Resumen final del pulso JAC</h2>
+            <p className="muted">
+              Al cerrar la ultima pregunta, esta grafica muestra cuantas respuestas cayeron en la
+              opcion esperada en cada bloque del recorrido.
+            </p>
+
+            <div className="final-chart">
+              {payload?.finalSummary.map((item, index) => {
+                const width =
+                  item.totalResponses === 0 ? 0 : (item.correctResponses / item.totalResponses) * 100;
+
+                return (
+                  <div className="final-chart-row" key={item.questionId}>
+                    <div className="final-chart-label">
+                      <span className="final-chart-index">0{index + 1}</span>
+                      <div>
+                        <strong>{item.prompt}</strong>
+                        <p className="muted small">
+                          {item.correctResponses} de {item.totalResponses || 0} eligieron la opcion esperada
+                        </p>
+                      </div>
+                    </div>
+                    <div className="final-chart-bar">
+                      <div className="final-chart-fill" style={{ width: `${width}%` }} />
+                      <span className="final-chart-value">{Math.round(width)}%</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
 
         {error ? (
           <p className="footer-note">

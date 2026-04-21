@@ -17,8 +17,17 @@ export type ResponseStat = {
   count: number;
 };
 
+export type FinalQuestionSummary = {
+  questionId: string;
+  prompt: string;
+  correctOptionId: string;
+  totalResponses: number;
+  correctResponses: number;
+};
+
 export type SessionPayload = {
   session: SessionState;
   participants: Participant[];
   stats: ResponseStat[];
+  finalSummary: FinalQuestionSummary[];
 };
