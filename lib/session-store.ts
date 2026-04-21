@@ -2,6 +2,7 @@ import { joinCode, questions, sessionTitle } from "@/lib/questions";
 import type {
   FinalQuestionSummary,
   Participant,
+  ParticipantResultSummary,
   ResponseStat,
   SessionPayload,
   SessionState
@@ -85,7 +86,7 @@ export async function getSessionPayload(): Promise<SessionPayload> {
 
   const session = await ensureSupabaseSession(client);
 
-  const [{ data: participants = [] }, { data: responses = [] }] = await Promise.all([
+  const [{ data: participants }, { data: responses }] = await Promise.all([
     client.from("quiz_participants").select("id, name").eq("session_code", joinCode).order("created_at"),
     client.from("quiz_responses").select("participant_id, question_id, option_id").eq("session_code", joinCode)
   ]);
@@ -97,9 +98,9 @@ export async function getSessionPayload(): Promise<SessionPayload> {
       currentQuestion: session.current_question,
       phase: session.phase
     },
-    participants,
-    stats: getStatsForCurrentQuestion(responses, session.current_question),
-    finalSummary: getFinalSummary(responses)
+    participants: participants ?? [],
+    stats: getStatsForCurrentQuestion(responses ?? [], session.current_question),
+    finalSummary: getFinalSummary(responses ?? [])
   };
 }
 
@@ -176,7 +177,7 @@ export async function submitAnswer(participantId: string, optionId: string) {
   }
 }
 
-export async function controlSession(action: "next" | "reveal" | "reset") {
+export async function controlSession(action: "next" | "reveal" | "reset" | "end") {
   const client = getSupabaseAdmin();
 
   if (!client) {
@@ -198,6 +199,10 @@ export async function controlSession(action: "next" | "reveal" | "reset") {
       memoryState.answers = [];
     }
 
+    if (action === "end") {
+      memoryState.session.phase = "ended";
+    }
+
     return memoryState.session;
   }
 
@@ -211,7 +216,13 @@ export async function controlSession(action: "next" | "reveal" | "reset") {
         ? 0
         : session.current_question;
   const phase =
-    action === "reveal" ? "reveal" : action === "reset" ? "lobby" : "question";
+    action === "reveal"
+      ? "reveal"
+      : action === "reset"
+        ? "lobby"
+        : action === "end"
+          ? "ended"
+          : "question";
 
   if (action === "reset") {
     await client.from("quiz_responses").delete().eq("session_code", joinCode);
@@ -238,6 +249,53 @@ export async function controlSession(action: "next" | "reveal" | "reset") {
     currentQuestion: data.current_question,
     phase: data.phase
   } satisfies SessionState;
+}
+
+export async function getParticipantResultSummary(
+  participantId: string
+): Promise<ParticipantResultSummary> {
+  const client = getSupabaseAdmin();
+
+  if (!participantId) {
+    throw new Error("Participante invalido.");
+  }
+
+  if (!client) {
+    const participant = memoryState.participants.find((item) => item.id === participantId);
+
+    if (!participant) {
+      throw new Error("No encontramos ese participante.");
+    }
+
+    return buildParticipantResultSummary(participant, memoryState.answers);
+  }
+
+  await ensureSupabaseSession(client);
+
+  const [{ data: participant, error: participantError }, { data: responses = [], error: responseError }] =
+    await Promise.all([
+      client
+        .from("quiz_participants")
+        .select("id, name")
+        .eq("session_code", joinCode)
+        .eq("id", participantId)
+        .maybeSingle(),
+      client
+        .from("quiz_responses")
+        .select("participant_id, question_id, option_id")
+        .eq("session_code", joinCode)
+        .eq("participant_id", participantId)
+    ]);
+
+  if (participantError || responseError) {
+    throw participantError ?? responseError ?? new Error("No se pudieron leer los resultados.");
+  }
+
+  if (!participant) {
+    throw new Error("No encontramos ese participante.");
+  }
+
+  return buildParticipantResultSummary(participant, responses ?? []);
 }
 
 function getStatsForCurrentQuestion(
@@ -268,4 +326,37 @@ function getFinalSummary(answers: AnswerRow[]): FinalQuestionSummary[] {
       correctResponses
     };
   });
+}
+
+function buildParticipantResultSummary(
+  participant: Participant,
+  answers: AnswerRow[]
+): ParticipantResultSummary {
+  const items = questions.map((question) => {
+    const selected = answers.find((answer) => answer.question_id === question.id);
+    const selectedOption = question.options.find((option) => option.id === selected?.option_id);
+    const correctOption =
+      question.options.find((option) => option.id === question.correctOptionId) ?? question.options[0];
+
+    return {
+      questionId: question.id,
+      prompt: question.prompt,
+      selectedOptionId: selectedOption?.id ?? null,
+      selectedOptionLabel: selectedOption?.label ?? null,
+      selectedOptionEmoji: selectedOption?.emoji ?? null,
+      correctOptionId: correctOption.id,
+      correctOptionLabel: correctOption.label,
+      correctOptionEmoji: correctOption.emoji,
+      isCorrect: selectedOption?.id === correctOption.id
+    };
+  });
+
+  return {
+    participantId: participant.id,
+    participantName: participant.name,
+    totalQuestions: questions.length,
+    answeredQuestions: items.filter((item) => item.selectedOptionId).length,
+    correctAnswers: items.filter((item) => item.isCorrect).length,
+    items
+  };
 }

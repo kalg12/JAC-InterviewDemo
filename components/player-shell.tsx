@@ -3,7 +3,7 @@
 import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { questions } from "@/lib/questions";
-import type { Participant, SessionPayload } from "@/lib/types";
+import type { Participant, ParticipantResultSummary, SessionPayload } from "@/lib/types";
 
 const participantStorageKey = "jac-live-pulse-participant";
 
@@ -33,7 +33,7 @@ export function PlayerShell() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
-  const [movingSession, setMovingSession] = useState(false);
+  const [resultSummary, setResultSummary] = useState<ParticipantResultSummary | null>(null);
 
   const currentQuestion = useMemo(() => {
     if (!payload) {
@@ -104,6 +104,41 @@ export function PlayerShell() {
     }
   }, [currentQuestion.correctOptionId, payload, selectedOption]);
 
+  useEffect(() => {
+    if (!participant || payload?.session.phase !== "ended") {
+      return;
+    }
+
+    let active = true;
+
+    const loadResult = async () => {
+      try {
+        const response = await fetch(`/api/session/result?participantId=${participant.id}`, {
+          cache: "no-store"
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error ?? "No se pudo cargar tu resultado.");
+        }
+
+        if (active) {
+          setResultSummary(data.result);
+        }
+      } catch (resultError) {
+        if (active && resultError instanceof Error) {
+          setError(resultError.message);
+        }
+      }
+    };
+
+    loadResult();
+
+    return () => {
+      active = false;
+    };
+  }, [participant, payload?.session.phase]);
+
   async function joinRoom() {
     setSaving(true);
     setError("");
@@ -155,39 +190,6 @@ export function PlayerShell() {
     }
   }
 
-  async function advanceEveryone() {
-    setMovingSession(true);
-    setError("");
-
-    try {
-      const response = await fetch("/api/session/control", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ action: "next", source: "participant" })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error ?? "No se pudo mover la sesion.");
-        return;
-      }
-
-      setPayload((current) =>
-        current
-          ? {
-              ...current,
-              session: data.session
-            }
-          : current
-      );
-    } finally {
-      setMovingSession(false);
-    }
-  }
-
   if (!participant) {
     return (
       <div className="lobby-card">
@@ -207,6 +209,62 @@ export function PlayerShell() {
           <button className="button" disabled={saving} onClick={joinRoom}>
             {saving ? "Entrando..." : "Entrar a la dinamica"}
           </button>
+        </div>
+
+        {error ? <p className="footer-note">{error}</p> : null}
+      </div>
+    );
+  }
+
+  if (payload?.session.phase === "ended") {
+    return (
+      <div className="question-card">
+        <span className="eyebrow">Cierre de actividad</span>
+        <h1 className="question-title">Gracias por participar, {participant.name}</h1>
+        <p className="muted">
+          El presentador ya cerró la dinámica. Aquí tienes tu resultado personal y el repaso de tus respuestas.
+        </p>
+
+        <div className="metrics-grid" style={{ marginTop: 18 }}>
+          <article className="metric">
+            <strong>{resultSummary?.correctAnswers ?? 0}</strong>
+            <span>respuestas correctas</span>
+          </article>
+          <article className="metric">
+            <strong>{resultSummary?.answeredQuestions ?? 0}</strong>
+            <span>preguntas respondidas</span>
+          </article>
+          <article className="metric">
+            <strong>{resultSummary?.totalQuestions ?? questions.length}</strong>
+            <span>preguntas totales</span>
+          </article>
+        </div>
+
+        <div className="final-chart" style={{ marginTop: 24 }}>
+          {resultSummary?.items.map((item, index) => (
+            <div className="participant-result-card" key={item.questionId}>
+              <div className="final-chart-label">
+                <span className="final-chart-index">0{index + 1}</span>
+                <div>
+                  <strong>{item.prompt}</strong>
+                  <p className="muted small">
+                    Tu respuesta:{" "}
+                    {item.selectedOptionLabel
+                      ? `${item.selectedOptionEmoji ?? ""} ${item.selectedOptionLabel}`
+                      : "Sin respuesta"}
+                  </p>
+                  <p className="muted small">
+                    Respuesta correcta: {item.correctOptionEmoji} {item.correctOptionLabel}
+                  </p>
+                </div>
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <span className={`tag ${item.isCorrect ? "" : "danger"}`}>
+                  {item.isCorrect ? "Correcta" : "Por reforzar"}
+                </span>
+              </div>
+            </div>
+          ))}
         </div>
 
         {error ? <p className="footer-note">{error}</p> : null}
@@ -269,23 +327,11 @@ export function PlayerShell() {
       </div>
 
       {payload?.session.phase === "reveal" ? (
-        <>
-          <p className="footer-note">
-            {selectedOption === currentQuestion.correctOptionId
-              ? "Acertaste. Activa el momento wow con confeti y prepárate para el siguiente pulso."
-              : "La respuesta correcta ya fue revelada. Si quieres, puedes dejar esta pantalla abierta para seguir el siguiente pulso."}
-          </p>
-          {payload.session.currentQuestion < questions.length - 1 ? (
-            <div className="session-actions">
-              <button className="ghost-button" disabled={movingSession} onClick={advanceEveryone}>
-                {movingSession ? "Moviendo a todos..." : "Avanzar a la siguiente pregunta para todos"}
-              </button>
-              <span className="muted small">
-                Este boton empuja el pulso global y alinea a todos con la siguiente pregunta.
-              </span>
-            </div>
-          ) : null}
-        </>
+        <p className="footer-note">
+          {selectedOption === currentQuestion.correctOptionId
+            ? "Acertaste. Activa el momento wow con confeti y espera a que el presentador abra el siguiente pulso."
+            : "La respuesta correcta ya fue revelada. Mantén esta pantalla abierta y el presentador te moverá al siguiente pulso."}
+        </p>
       ) : (
         <p className="footer-note">Tu seleccion se guarda y puede actualizarse hasta que reveles.</p>
       )}

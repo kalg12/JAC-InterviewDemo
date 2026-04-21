@@ -25,6 +25,27 @@ export type FinalQuestionSummary = {
   correctResponses: number;
 };
 
+export type ParticipantQuestionResult = {
+  questionId: string;
+  prompt: string;
+  selectedOptionId: string | null;
+  selectedOptionLabel: string | null;
+  selectedOptionEmoji: string | null;
+  correctOptionId: string;
+  correctOptionLabel: string;
+  correctOptionEmoji: string;
+  isCorrect: boolean;
+};
+
+export type ParticipantResultSummary = {
+  participantId: string;
+  participantName: string;
+  totalQuestions: number;
+  answeredQuestions: number;
+  correctAnswers: number;
+  items: ParticipantQuestionResult[];
+};
+
 export type SessionPayload = {
   session: SessionState;
   participants: Participant[];

@@ -75,9 +75,11 @@ export function HostDashboard() {
 
   const totalResponses = payload?.stats.reduce((sum, item) => sum + item.count, 0) ?? 0;
   const isFinalQuestion = (payload?.session.currentQuestion ?? 0) === questions.length - 1;
-  const showFinalBoard = isFinalQuestion && payload?.session.phase === "reveal";
+  const showFinalBoard =
+    isFinalQuestion && (payload?.session.phase === "reveal" || payload?.session.phase === "ended");
+  const sessionEnded = payload?.session.phase === "ended";
 
-  async function sendAction(action: "next" | "reveal" | "reset") {
+  async function sendAction(action: "next" | "reveal" | "reset" | "end") {
     const response = await fetch("/api/session/control", {
       method: "POST",
       headers: {
@@ -123,12 +125,21 @@ export function HostDashboard() {
         </div>
 
         <div style={{ marginTop: 18, display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <button className="button" onClick={() => sendAction("next")}>
-            Siguiente pregunta
-          </button>
-          <button className="ghost-button" onClick={() => sendAction("reveal")}>
-            Revelar respuesta
-          </button>
+          {!sessionEnded ? (
+            <button className="button" onClick={() => sendAction("next")}>
+              Siguiente pregunta
+            </button>
+          ) : null}
+          {!sessionEnded ? (
+            <button className="ghost-button" onClick={() => sendAction("reveal")}>
+              Revelar respuesta
+            </button>
+          ) : null}
+          {showFinalBoard && !sessionEnded ? (
+            <button className="button" onClick={() => sendAction("end")}>
+              Terminar actividad
+            </button>
+          ) : null}
           <button className="ghost-button" onClick={() => sendAction("reset")}>
             Reiniciar demo
           </button>
@@ -172,6 +183,11 @@ export function HostDashboard() {
               Al cerrar la ultima pregunta, esta grafica muestra cuantas respuestas cayeron en la
               opcion esperada en cada bloque del recorrido.
             </p>
+            {payload?.session.phase === "ended" ? (
+              <p className="footer-note">
+                La actividad quedó cerrada. Cada participante ya puede ver su resultado personal en su propio dispositivo.
+              </p>
+            ) : null}
 
             <div className="final-chart">
               {payload?.finalSummary.map((item, index) => {

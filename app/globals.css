@@ -451,12 +451,12 @@ input {
   margin: 14px 0 8px;
 }
 
-.session-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 14px;
-  margin-top: 16px;
+.participant-result-card {
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid var(--line);
+  background: rgba(9, 24, 42, 0.62);
+  box-shadow: var(--shadow);
 }
 
 .confetti-burst {
