@@ -19,9 +19,11 @@ export function HostDashboard() {
   const [payload, setPayload] = useState<SessionPayload | null>(null);
   const [qrSrc, setQrSrc] = useState("");
   const [error, setError] = useState("");
+  const [joinUrl, setJoinUrl] = useState("");
 
-  const joinUrl =
-    typeof window === "undefined" ? "" : `${window.location.origin}/play?code=${joinCode}`;
+  useEffect(() => {
+    setJoinUrl(`${window.location.origin}/play?code=${joinCode}`);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -211,7 +213,7 @@ export function HostDashboard() {
           {qrSrc ? <img src={qrSrc} alt="QR para entrar al quiz" width={260} height={260} /> : "Generando QR..."}
         </div>
         <p className="footer-note">
-          URL de acceso: <strong>{joinUrl || `/play?code=${joinCode}`}</strong>
+          URL de acceso: <strong>{joinUrl || "Cargando enlace..."}</strong>
         </p>
 
         <h3 style={{ marginTop: 22 }}>Concepto visual</h3>
