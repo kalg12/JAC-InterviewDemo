@@ -38,6 +38,7 @@ export function HostDashboard() {
   const [qrSrc, setQrSrc] = useState("");
   const [error, setError] = useState("");
   const [joinUrl, setJoinUrl] = useState("");
+  const [pendingAction, setPendingAction] = useState<"next" | "reveal" | "reset" | "end" | null>(null);
   const isPollingRef = useRef(false);
   const endLocked = endedPayload !== null;
 
@@ -121,6 +122,12 @@ export function HostDashboard() {
   }, [payload]);
 
   async function sendAction(action: "next" | "reveal" | "reset" | "end") {
+    if (pendingAction) {
+      return;
+    }
+
+    setPendingAction(action);
+
     try {
       const data = await sendSessionAction(action);
       setError("");
@@ -132,11 +139,13 @@ export function HostDashboard() {
       if (sessionError instanceof Error) {
         setError(sessionError.message);
       }
+    } finally {
+      setPendingAction(null);
     }
   }
 
   async function advanceHostFlow() {
-    if (!payload || sessionEnded) {
+    if (!payload || sessionEnded || pendingAction) {
       return;
     }
 
@@ -162,6 +171,15 @@ export function HostDashboard() {
     : sessionPhase === "reveal"
       ? "Siguiente pregunta"
       : "Revelar respuesta";
+  const primaryLoadingLabel = pendingAction === "reveal"
+    ? "Revelando..."
+    : pendingAction === "next"
+      ? "Abriendo siguiente..."
+      : pendingAction === "end"
+        ? "Cerrando..."
+        : pendingAction === "reset"
+          ? "Reiniciando..."
+          : primaryActionLabel;
 
   if (sessionEnded || endedPayload) {
     return (
@@ -196,8 +214,8 @@ export function HostDashboard() {
           </div>
 
           <div style={{ marginTop: 18, display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <button className="ghost-button" onClick={() => sendAction("reset")}>
-              Reiniciar demo
+            <button className="ghost-button" disabled={pendingAction !== null} onClick={() => sendAction("reset")}>
+              {pendingAction === "reset" ? "Reiniciando..." : "Reiniciar demo"}
             </button>
           </div>
 
@@ -245,14 +263,33 @@ export function HostDashboard() {
 
         <div style={{ marginTop: 18, display: "flex", gap: 12, flexWrap: "wrap" }}>
           {!sessionEnded ? (
-            <button className="button" onClick={advanceHostFlow}>
-              {primaryActionLabel}
+            <button className="button" disabled={pendingAction !== null} onClick={advanceHostFlow}>
+              {pendingAction && pendingAction !== "reset" ? (
+                <>
+                  <span className="button-spinner" aria-hidden="true" />
+                  {primaryLoadingLabel}
+                </>
+              ) : (
+                primaryActionLabel
+              )}
             </button>
           ) : null}
-          <button className="ghost-button" onClick={() => sendAction("reset")}>
-            Reiniciar demo
+          <button className="ghost-button" disabled={pendingAction !== null} onClick={() => sendAction("reset")}>
+            {pendingAction === "reset" ? "Reiniciando..." : "Reiniciar demo"}
           </button>
         </div>
+
+        {pendingAction ? (
+          <p className="footer-note">
+            {pendingAction === "reveal"
+              ? "Estamos revelando la respuesta correcta para todos los participantes."
+              : pendingAction === "next"
+                ? "Estamos sincronizando la siguiente pregunta con toda la audiencia."
+                : pendingAction === "end"
+                  ? "Estamos cerrando la actividad."
+                  : "Estamos reiniciando la demo."}
+          </p>
+        ) : null}
 
         <div className="question-card" style={{ marginTop: 20 }}>
           <span className="question-pill">

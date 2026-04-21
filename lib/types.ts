@@ -53,6 +53,7 @@ export type SessionPayload = {
   participants: Participant[];
   stats: ResponseStat[];
   finalSummary: FinalQuestionSummary[];
+  currentParticipantAnswerOptionId?: string | null;
 };
 
 export type SessionControlPayload = {

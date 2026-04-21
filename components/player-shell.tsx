@@ -62,7 +62,9 @@ export function PlayerShell() {
       isPollingRef.current = true;
 
       try {
-        const response = await fetch("/api/session", { cache: "no-store" });
+        const participantId = getStoredParticipant()?.id;
+        const query = participantId ? `?participantId=${encodeURIComponent(participantId)}` : "";
+        const response = await fetch(`/api/session${query}`, { cache: "no-store" });
         const data = await response.json();
         if (active) {
           setPayload(data);
@@ -88,14 +90,14 @@ export function PlayerShell() {
 
   useEffect(() => {
     setSelectedOption((currentSelected) => {
-      const currentOptionStillExists = currentQuestion.options.some(
-        (option) => option.id === currentSelected
-      );
+      const serverSelected = payload?.currentParticipantAnswerOptionId;
+      const sourceOption = serverSelected ?? currentSelected;
+      const currentOptionStillExists = currentQuestion.options.some((option) => option.id === sourceOption);
 
-      return currentOptionStillExists ? currentSelected : "";
+      return currentOptionStillExists ? sourceOption : "";
     });
     setShowConfetti(false);
-  }, [currentQuestion.id]);
+  }, [currentQuestion.id, payload?.currentParticipantAnswerOptionId]);
 
   useEffect(() => {
     if (payload?.session.phase !== "ended") {
@@ -199,6 +201,7 @@ export function PlayerShell() {
 
       window.localStorage.setItem(participantStorageKey, JSON.stringify(data.participant));
       setParticipant(data.participant);
+      setSelectedOption("");
     } finally {
       setSaving(false);
     }

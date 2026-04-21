@@ -86,7 +86,7 @@ async function ensureSupabaseSession(client: SupabaseClient) {
   return data;
 }
 
-export async function getSessionPayload(): Promise<SessionPayload> {
+export async function getSessionPayload(participantId?: string): Promise<SessionPayload> {
   const client = getSupabaseAdmin();
 
   if (!client) {
@@ -94,7 +94,12 @@ export async function getSessionPayload(): Promise<SessionPayload> {
       session: memoryState.session,
       participants: memoryState.participants,
       stats: getStatsForCurrentQuestion(memoryState.answers, memoryState.session.currentQuestion),
-      finalSummary: getFinalSummary(memoryState.answers)
+      finalSummary: getFinalSummary(memoryState.answers),
+      currentParticipantAnswerOptionId: getCurrentParticipantAnswerOptionId(
+        memoryState.answers,
+        memoryState.session.currentQuestion,
+        participantId
+      )
     };
   }
 
@@ -114,7 +119,12 @@ export async function getSessionPayload(): Promise<SessionPayload> {
     },
     participants: participants ?? [],
     stats: getStatsForCurrentQuestion(responses ?? [], session.current_question),
-    finalSummary: getFinalSummary(responses ?? [])
+    finalSummary: getFinalSummary(responses ?? []),
+    currentParticipantAnswerOptionId: getCurrentParticipantAnswerOptionId(
+      responses ?? [],
+      session.current_question,
+      participantId
+    )
   };
 }
 
@@ -405,6 +415,23 @@ function getFinalSummary(answers: AnswerRow[]): FinalQuestionSummary[] {
       correctResponses: summary?.correctResponses ?? 0
     };
   });
+}
+
+function getCurrentParticipantAnswerOptionId(
+  answers: AnswerRow[],
+  currentQuestionIndex: number,
+  participantId?: string
+) {
+  if (!participantId) {
+    return null;
+  }
+
+  const questionId = questions[currentQuestionIndex]?.id ?? questions[0].id;
+  const answer = answers.find(
+    (item) => item.participant_id === participantId && item.question_id === questionId
+  );
+
+  return answer?.option_id ?? null;
 }
 
 function buildParticipantResultSummary(

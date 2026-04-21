@@ -1,9 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSessionPayload } from "@/lib/session-store";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const payload = await getSessionPayload();
+    const participantId = request.nextUrl.searchParams.get("participantId") ?? undefined;
+    const payload = await getSessionPayload(participantId);
     return NextResponse.json(payload);
   } catch (error) {
     const message = error instanceof Error ? error.message : "No se pudo cargar la sesion.";

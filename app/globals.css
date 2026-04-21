@@ -225,6 +225,22 @@ input {
   transform: translateY(-2px);
 }
 
+.button:disabled,
+.ghost-button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+  transform: none;
+}
+
+.button-spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 2px solid rgba(9, 17, 27, 0.25);
+  border-top-color: rgba(9, 17, 27, 0.95);
+  animation: spin 0.8s linear infinite;
+}
+
 .metrics-grid {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
@@ -715,6 +731,15 @@ input {
   }
   50% {
     transform: translateY(-18px) translateX(12px);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 
