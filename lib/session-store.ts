@@ -155,11 +155,25 @@ export async function joinParticipant(name: string) {
 }
 
 export async function submitAnswer(participantId: string, optionId: string) {
-  const currentQuestion = questions[memoryState.session.currentQuestion];
-  const questionId = currentQuestion.id;
+  if (!participantId || !optionId) {
+    throw new Error("Respuesta invalida.");
+  }
+
   const client = getSupabaseAdmin();
 
   if (!client) {
+    if (memoryState.session.phase === "reveal" || memoryState.session.phase === "ended") {
+      throw new Error("La pregunta ya fue cerrada.");
+    }
+
+    const currentQuestion = questions[memoryState.session.currentQuestion];
+    const questionId = currentQuestion.id;
+    const optionExists = currentQuestion.options.some((option) => option.id === optionId);
+
+    if (!optionExists) {
+      throw new Error("La opcion no pertenece a la pregunta actual.");
+    }
+
     memoryState.answers = memoryState.answers.filter(
       (answer) => !(answer.participant_id === participantId && answer.question_id === questionId)
     );
@@ -173,6 +187,15 @@ export async function submitAnswer(participantId: string, optionId: string) {
 
   const session = await ensureSupabaseSession(client);
   const liveQuestionId = questions[session.current_question]?.id ?? questions[0].id;
+  const liveQuestion = questions[session.current_question] ?? questions[0];
+
+  if (session.phase === "reveal" || session.phase === "ended") {
+    throw new Error("La pregunta ya fue cerrada.");
+  }
+
+  if (!liveQuestion.options.some((option) => option.id === optionId)) {
+    throw new Error("La opcion no pertenece a la pregunta actual.");
+  }
 
   const { error } = await client.from("quiz_responses").upsert(
     {
@@ -317,27 +340,63 @@ function getStatsForCurrentQuestion(
   currentQuestionIndex: number
 ): ResponseStat[] {
   const questionId = questions[currentQuestionIndex]?.id ?? questions[0].id;
-  const filtered = answers.filter((answer) => answer.question_id === questionId);
+  const counts = new Map<string, number>();
 
-  return questions[currentQuestionIndex]?.options.map((option) => ({
-    optionId: option.id,
-    count: filtered.filter((answer) => answer.option_id === option.id).length
-  })) ?? [];
+  for (const answer of answers) {
+    if (answer.question_id !== questionId) {
+      continue;
+    }
+
+    counts.set(answer.option_id, (counts.get(answer.option_id) ?? 0) + 1);
+  }
+
+  return (
+    questions[currentQuestionIndex]?.options.map((option) => ({
+      optionId: option.id,
+      count: counts.get(option.id) ?? 0
+    })) ?? []
+  );
 }
 
 function getFinalSummary(answers: AnswerRow[]): FinalQuestionSummary[] {
+  const questionsById = new Map(questions.map((question) => [question.id, question]));
+  const questionBuckets = new Map<
+    string,
+    {
+      totalResponses: number;
+      correctResponses: number;
+    }
+  >();
+
+  for (const answer of answers) {
+    const question = questionsById.get(answer.question_id);
+
+    if (!question) {
+      continue;
+    }
+
+    const current = questionBuckets.get(question.id) ?? {
+      totalResponses: 0,
+      correctResponses: 0
+    };
+
+    current.totalResponses += 1;
+    if (answer.option_id === question.correctOptionId) {
+      current.correctResponses += 1;
+    }
+
+    questionBuckets.set(question.id, current);
+  }
+
   return questions.map((question) => {
-    const responses = answers.filter((answer) => answer.question_id === question.id);
-    const correctResponses = responses.filter(
-      (answer) => answer.option_id === question.correctOptionId
-    ).length;
+    const summary = questionBuckets.get(question.id);
 
     return {
       questionId: question.id,
       prompt: question.prompt,
       correctOptionId: question.correctOptionId,
-      totalResponses: responses.length,
-      correctResponses
+      totalResponses: summary?.totalResponses ?? 0,
+      correctResponses: summary?.correctResponses ?? 0
     };
   });
 }

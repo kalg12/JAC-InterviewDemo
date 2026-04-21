@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
-import { joinCode, questions } from "@/lib/questions";
-import type { SessionPayload } from "@/lib/types";
+import { getShuffledOptions, joinCode, questions } from "@/lib/questions";
+import type { SessionControlPayload, SessionPayload } from "@/lib/types";
 
 async function fetchSession(): Promise<SessionPayload> {
   const response = await fetch("/api/session", { cache: "no-store" });
@@ -15,12 +15,30 @@ async function fetchSession(): Promise<SessionPayload> {
   return response.json();
 }
 
+async function sendSessionAction(action: "next" | "reveal" | "reset" | "end") {
+  const response = await fetch("/api/session/control", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ action })
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({ error: "No se pudo actualizar la sesion." }));
+    throw new Error(data.error ?? "No se pudo actualizar la sesion.");
+  }
+
+  return (await response.json()) as SessionControlPayload;
+}
+
 export function HostDashboard() {
   const [payload, setPayload] = useState<SessionPayload | null>(null);
   const [endedPayload, setEndedPayload] = useState<SessionPayload | null>(null);
   const [qrSrc, setQrSrc] = useState("");
   const [error, setError] = useState("");
   const [joinUrl, setJoinUrl] = useState("");
+  const isPollingRef = useRef(false);
   const endLocked = endedPayload !== null;
 
   useEffect(() => {
@@ -35,20 +53,29 @@ export function HostDashboard() {
     let active = true;
 
     const load = async () => {
+      if (isPollingRef.current) {
+        return;
+      }
+
+      isPollingRef.current = true;
+
       try {
         const data = await fetchSession();
         if (active) {
           setPayload(data);
+          setError("");
         }
       } catch (sessionError) {
         if (active && sessionError instanceof Error) {
           setError(sessionError.message);
         }
+      } finally {
+        isPollingRef.current = false;
       }
     };
 
     load();
-    const interval = window.setInterval(load, 1800);
+    const interval = window.setInterval(load, 700);
 
     return () => {
       active = false;
@@ -78,6 +105,7 @@ export function HostDashboard() {
 
     return questions[payload.session.currentQuestion] ?? questions[0];
   }, [payload]);
+  const currentOptions = useMemo(() => getShuffledOptions(currentQuestion), [currentQuestion]);
 
   const totalResponses = payload?.stats.reduce((sum, item) => sum + item.count, 0) ?? 0;
   const isFinalQuestion = (payload?.session.currentQuestion ?? 0) === questions.length - 1;
@@ -93,26 +121,18 @@ export function HostDashboard() {
   }, [payload]);
 
   async function sendAction(action: "next" | "reveal" | "reset" | "end") {
-    const response = await fetch("/api/session/control", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ action })
-    });
-
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({ error: "No se pudo actualizar la sesion." }));
-      setError(data.error ?? "No se pudo actualizar la sesion.");
-      return;
+    try {
+      const data = await sendSessionAction(action);
+      setError("");
+      if (action === "reset") {
+        setEndedPayload(null);
+      }
+      setPayload(data.payload);
+    } catch (sessionError) {
+      if (sessionError instanceof Error) {
+        setError(sessionError.message);
+      }
     }
-
-    setError("");
-    if (action === "reset") {
-      setEndedPayload(null);
-    }
-    const data = await fetchSession();
-    setPayload(data);
   }
 
   async function advanceHostFlow() {
@@ -241,7 +261,7 @@ export function HostDashboard() {
           <h2 className="question-title">{currentQuestion.prompt}</h2>
 
           <div className="stats-bar">
-            {currentQuestion.options.map((option) => {
+            {currentOptions.map((option) => {
               const count = payload?.stats.find((item) => item.optionId === option.id)?.count ?? 0;
               const width = totalResponses === 0 ? 0 : (count / totalResponses) * 100;
               const isCorrect =
@@ -297,7 +317,7 @@ export function HostDashboard() {
         </p>
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
-          {currentQuestion.options.map((option) => (
+          {currentOptions.map((option) => (
             <span className="pill" key={option.id}>
               {option.emoji} {option.mood}
             </span>

@@ -118,3 +118,34 @@ export const questions: QuizQuestion[] = [
 ];
 
 export const sessionTitle = "JAC Live Pulse";
+
+function hashSeed(value: string) {
+  let hash = 0;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+
+  return hash;
+}
+
+function seededRandom(seed: number) {
+  let state = seed || 1;
+
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+}
+
+export function getShuffledOptions(question: QuizQuestion) {
+  const random = seededRandom(hashSeed(question.id));
+  const options = [...question.options];
+
+  for (let index = options.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(random() * (index + 1));
+    [options[index], options[swapIndex]] = [options[swapIndex], options[index]];
+  }
+
+  return options;
+}

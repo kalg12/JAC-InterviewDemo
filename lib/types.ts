@@ -52,3 +52,8 @@ export type SessionPayload = {
   stats: ResponseStat[];
   finalSummary: FinalQuestionSummary[];
 };
+
+export type SessionControlPayload = {
+  session: SessionState;
+  payload: SessionPayload;
+};

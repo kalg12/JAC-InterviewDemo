@@ -1,8 +1,8 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { useEffect, useMemo, useState } from "react";
-import { questions } from "@/lib/questions";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { getShuffledOptions, questions } from "@/lib/questions";
 import type { Participant, ParticipantResultSummary, SessionPayload } from "@/lib/types";
 
 const participantStorageKey = "jac-live-pulse-participant";
@@ -36,6 +36,7 @@ export function PlayerShell() {
   const [showConfetti, setShowConfetti] = useState(false);
   const [resultSummary, setResultSummary] = useState<ParticipantResultSummary | null>(null);
   const [loadingResultSummary, setLoadingResultSummary] = useState(false);
+  const isPollingRef = useRef(false);
 
   const currentQuestion = useMemo(() => {
     if (!payload) {
@@ -44,6 +45,7 @@ export function PlayerShell() {
 
     return questions[payload.session.currentQuestion] ?? questions[0];
   }, [payload]);
+  const currentOptions = useMemo(() => getShuffledOptions(currentQuestion), [currentQuestion]);
 
   useEffect(() => {
     setParticipant(getStoredParticipant());
@@ -53,21 +55,30 @@ export function PlayerShell() {
     let active = true;
 
     const load = async () => {
+      if (isPollingRef.current) {
+        return;
+      }
+
+      isPollingRef.current = true;
+
       try {
         const response = await fetch("/api/session", { cache: "no-store" });
         const data = await response.json();
         if (active) {
           setPayload(data);
+          setError("");
         }
       } catch {
         if (active) {
           setError("No pudimos sincronizar la sesion.");
         }
+      } finally {
+        isPollingRef.current = false;
       }
     };
 
     load();
-    const interval = window.setInterval(load, 1800);
+    const interval = window.setInterval(load, 700);
 
     return () => {
       active = false;
@@ -76,14 +87,23 @@ export function PlayerShell() {
   }, []);
 
   useEffect(() => {
-    setSelectedOption("");
+    setSelectedOption((currentSelected) => {
+      const currentOptionStillExists = currentQuestion.options.some(
+        (option) => option.id === currentSelected
+      );
+
+      return currentOptionStillExists ? currentSelected : "";
+    });
     setShowConfetti(false);
+  }, [currentQuestion.id]);
+
+  useEffect(() => {
     if (payload?.session.phase !== "ended") {
       setResultSummary(null);
       setLoadingResultSummary(false);
       setEndedPayload(null);
     }
-  }, [payload?.session.currentQuestion, payload?.session.phase]);
+  }, [payload?.session.phase]);
 
   useEffect(() => {
     if (payload?.session.phase === "ended") {
@@ -184,7 +204,7 @@ export function PlayerShell() {
   }
 
   async function sendAnswer(optionId: string) {
-    if (!participant) {
+    if (!participant || payload?.session.phase === "reveal" || payload?.session.phase === "ended") {
       return;
     }
 
@@ -322,6 +342,9 @@ export function PlayerShell() {
           Cuando alguien avance el pulso central, esta pantalla cambiará para toda la audiencia.
         </span>
       </div>
+      <span className="question-pill" style={{ marginTop: 18 }}>
+        Pregunta {(payload?.session.currentQuestion ?? 0) + 1} de {questions.length}
+      </span>
       <h1 className="question-title">{currentQuestion.prompt}</h1>
       <p className="muted">
         Elige la opcion que mejor represente tu respuesta. Las tarjetas usan emociones y energia
@@ -329,7 +352,7 @@ export function PlayerShell() {
       </p>
 
       <div className="option-grid" style={{ marginTop: 18 }}>
-        {currentQuestion.options.map((option) => {
+        {currentOptions.map((option) => {
           const isActive = selectedOption === option.id;
           const isStar =
             payload.session.phase === "reveal" && option.id === currentQuestion.correctOptionId;
@@ -349,6 +372,7 @@ export function PlayerShell() {
           return (
             <button
               className={optionClasses}
+              disabled={payload.session.phase === "reveal" || payload.session.phase === "ended"}
               key={option.id}
               onClick={() => sendAnswer(option.id)}
             >
