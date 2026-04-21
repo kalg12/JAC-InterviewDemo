@@ -26,15 +26,42 @@ html {
 }
 
 body {
+  position: relative;
   margin: 0;
   min-height: 100vh;
   color: var(--text);
   background:
-    radial-gradient(circle at top left, rgba(61, 214, 208, 0.18), transparent 32%),
-    radial-gradient(circle at top right, rgba(255, 183, 3, 0.18), transparent 30%),
-    radial-gradient(circle at bottom center, rgba(251, 86, 7, 0.16), transparent 28%),
-    linear-gradient(160deg, #05101d 0%, #08172b 48%, #0f2440 100%);
+    linear-gradient(180deg, rgba(3, 10, 22, 0.48), rgba(4, 14, 30, 0.62)),
+    radial-gradient(circle at top left, rgba(61, 214, 208, 0.14), transparent 32%),
+    radial-gradient(circle at top right, rgba(255, 183, 3, 0.14), transparent 30%),
+    radial-gradient(circle at bottom center, rgba(251, 86, 7, 0.12), transparent 28%),
+    linear-gradient(160deg, rgba(5, 16, 29, 0.3) 0%, rgba(8, 23, 43, 0.42) 48%, rgba(15, 36, 64, 0.56) 100%);
   font-family: "Trebuchet MS", "Avenir Next", sans-serif;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background-image: url("/wallpapper.jpg");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: 0.72;
+  transform: scale(1.03);
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 20% 16%, rgba(61, 214, 208, 0.12), transparent 26%),
+    radial-gradient(circle at 82% 82%, rgba(255, 183, 3, 0.12), transparent 24%),
+    linear-gradient(180deg, rgba(3, 10, 22, 0.38), rgba(4, 14, 30, 0.52));
+  pointer-events: none;
 }
 
 a {
