@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useEffectEvent, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { createClient, type RealtimeChannel, type SupabaseClient } from "@supabase/supabase-js";
 import { joinCode } from "@/lib/questions";
 import type { SessionPayload } from "@/lib/types";
@@ -37,8 +37,16 @@ export function useSessionSync({
   const pollingRef = useRef(false);
   const realtimeClientRef = useRef<SupabaseClient | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
-  const onDataEvent = useEffectEvent(onData);
-  const onErrorEvent = useEffectEvent(onError);
+  const onDataRef = useRef(onData);
+  const onErrorRef = useRef(onError);
+
+  useEffect(() => {
+    onDataRef.current = onData;
+  }, [onData]);
+
+  useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
 
   useEffect(() => {
     if (!enabled) {
@@ -66,11 +74,13 @@ export function useSessionSync({
         }
 
         if (active) {
-          onDataEvent(data);
+          onDataRef.current(data);
         }
       } catch (error) {
         if (active) {
-          onErrorEvent(error instanceof Error ? error.message : "No se pudo sincronizar la sesion.");
+          onErrorRef.current(
+            error instanceof Error ? error.message : "No se pudo sincronizar la sesion."
+          );
         }
       } finally {
         pollingRef.current = false;
